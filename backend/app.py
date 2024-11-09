@@ -15,7 +15,13 @@ import time
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={
+    r"/*": {
+        "origins": "http://localhost:5173",
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
+    }
+})
 
 # Initialize OpenAI client
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
@@ -155,4 +161,4 @@ def print_variable_every_3_seconds(variable):
         time.sleep(3) 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True,port = 8000)

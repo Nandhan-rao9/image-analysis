@@ -10,7 +10,7 @@ import { NutritionProvider } from './context/NutritionContext';
 function App() {
   return (
     <BrowserRouter>
-      <NutritionProvider>
+      <NutritionProvider> 
         <Layout>
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />

@@ -1,13 +1,41 @@
 import React, { useState } from 'react';
-import { Camera, AlertCircle, Loader2 } from 'lucide-react';
+import { Camera, AlertCircle, Loader2, Check } from 'lucide-react';
 import { useNutrition } from '../context/NutritionContext';
 import axios from 'axios';
+
+interface NutritionData {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  minerals: {
+    calcium: number;
+    iron: number;
+    potassium: number;
+  };
+  vitamins: {
+    a: number;
+    c: number;
+    d: number;
+  };
+}
+
+interface FoodItem {
+  name: string;
+  confidence: number;
+  nutrition: NutritionData;
+}
 
 export const Analysis = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const { currentFood, setCurrentFood } = useNutrition();
   const [quantities, setQuantities] = useState<{ [key: number]: number }>({});
+  const [isCommitting, setIsCommitting] = useState(false);
+  
+  const { 
+    currentFood, 
+    setCurrentFood
+  } = useNutrition();
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -20,15 +48,14 @@ export const Analysis = () => {
       const formData = new FormData();
       formData.append('image', file);
 
-      const response = await axios.post('http://localhost:5000/analyze-image', formData, {
+      const response = await axios.post('http://127.0.0.1:8000/analyze-image', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
       });
 
-      // Initialize quantities for new food items
       const initialQuantities = response.data.reduce((acc: any, _: any, index: number) => {
-        acc[index] = 100; // Default serving size of 100g
+        acc[index] = 100;
         return acc;
       }, {});
       
@@ -45,12 +72,12 @@ export const Analysis = () => {
   const updateQuantity = (index: number, newQuantity: number) => {
     setQuantities(prev => ({
       ...prev,
-      [index]: Math.max(0, Math.min(500, newQuantity)) // Clamp between 0 and 500
+      [index]: Math.max(0, Math.min(500, newQuantity))
     }));
   };
 
-  const calculateAdjustedNutrients = (nutrition: any, quantity: number) => {
-    const ratio = quantity / 100; // Calculate ratio based on 100g serving
+  const calculateAdjustedNutrients = (nutrition: NutritionData, quantity: number) => {
+    const ratio = quantity / 100;
     return {
       calories: Math.round(nutrition.calories * ratio),
       protein: Math.round(nutrition.protein * ratio),
@@ -67,6 +94,49 @@ export const Analysis = () => {
         d: Math.round(nutrition.vitamins.d * ratio)
       }
     };
+  };
+
+  const handleCommit = async () => {
+    if (!currentFood.length) return;
+
+    setIsCommitting(true);
+    try {
+      // Calculate total nutrients from all foods
+      const totalNutrients = currentFood.reduce((total, food: FoodItem, index) => {
+        const adjustedNutrition = calculateAdjustedNutrients(food.nutrition, quantities[index]);
+        return {
+          calories: total.calories + adjustedNutrition.calories,
+          protein: total.protein + adjustedNutrition.protein,
+          carbs: total.carbs + adjustedNutrition.carbs,
+          fat: total.fat + adjustedNutrition.fat
+        };
+      }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
+
+      // Update global nutrition totals
+      // updateTotalNutrition(totalNutrients);
+
+      // Add items to recent meals
+      // currentFood.forEach((food: FoodItem, index) => {
+      //   const adjustedNutrition = calculateAdjustedNutrients(food.nutrition, quantities[index]);
+      //   addRecentMeal({
+      //     name: food.name,
+      //     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      //     calories: adjustedNutrition.calories,
+      //     protein: adjustedNutrition.protein,
+      //     image: `https://source.unsplash.com/featured/?${encodeURIComponent(food.name)},food`
+      //   });
+      // });
+
+      // Clear the current analysis
+      setCurrentFood([]);
+      setQuantities({});
+      setErrorMessage(null);
+    } catch (error) {
+      console.error('Error committing nutrition data:', error);
+      setErrorMessage('Failed to commit nutrition data. Please try again.');
+    } finally {
+      setIsCommitting(false);
+    }
   };
 
   return (
@@ -111,9 +181,28 @@ export const Analysis = () => {
 
         {currentFood.length > 0 && (
           <div className="bg-gray-800 rounded-lg p-6 shadow-lg">
-            <h2 className="text-xl font-semibold mb-4">Analysis Results</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">Analysis Results</h2>
+              <button
+                onClick={handleCommit}
+                disabled={isCommitting}
+                className={`px-4 py-2 rounded-lg flex items-center space-x-2 ${
+                  isCommitting 
+                    ? 'bg-gray-700 cursor-not-allowed' 
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                {isCommitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                ) : (
+                  <Check className="w-4 h-4 mr-2" />
+                )}
+                <span>{isCommitting ? 'Committing...' : 'Commit Changes'}</span>
+              </button>
+            </div>
+            
             <div className="space-y-6">
-              {currentFood.map((food, index) => {
+              {currentFood.map((food: FoodItem, index) => {
                 const adjustedNutrition = calculateAdjustedNutrients(food.nutrition, quantities[index]);
                 return (
                   <div

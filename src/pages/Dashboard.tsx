@@ -1,43 +1,105 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { motion } from 'framer-motion';
 import { BarChart2, Utensils, Activity, Target } from 'lucide-react';
-import { useNutrition } from '../context/NutritionContext';
+import axios from 'axios';
 import { NutrientSphere } from '../components/NutrientSphere';
 import { AnimatedProgressRing } from '../components/AnimatedProgressRing';
 
+interface NutritionData {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
+interface Meal {
+  name: string;
+  time: string;
+  calories: number;
+  protein: number;
+  image: string;
+}
+
 export const Dashboard = () => {
-  const { currentNutrition, nutritionTarget } = useNutrition();
+  const [currentNutrition, setCurrentNutrition] = useState<NutritionData>({
+    calories: 1315,
+    protein: 52,
+    carbs: 112,
+    fat: 17
+  });
+  const [recentMeals, setRecentMeals] = useState<Meal[]>([]);
+
+  const nutritionTarget = {
+    calories: 2346,
+    protein: 134,
+    carbs: 197,
+    fat: 64
+  };
+
+  useEffect(() => {
+    const fetchLatestData = async () => {
+      try {
+        const response = await axios.get('http://localhost:5000/analyze-image');
+        const latestFood = response.data[0];
+        
+        if (latestFood) {
+          setCurrentNutrition({
+            calories: latestFood.nutrition.calories || 0,
+            protein: latestFood.nutrition.protein || 0,
+            carbs: latestFood.nutrition.carbs || 0,
+            fat: latestFood.nutrition.fat || 0
+          });
+
+          const newMeal = {
+            name: latestFood.name,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            calories: latestFood.nutrition.calories,
+            protein: latestFood.nutrition.protein,
+            image: `https://source.unsplash.com/featured/?${encodeURIComponent(latestFood.name)},food`
+          };
+
+          setRecentMeals(prevMeals => [newMeal, ...prevMeals].slice(0, 5));
+        }
+      } catch (error) {
+        console.error('Error fetching nutrition data:', error);
+      }
+    };
+
+    fetchLatestData();
+    const interval = setInterval(fetchLatestData, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const stats = [
     {
       label: 'Daily Calories',
-      value: currentNutrition?.calories || 0,
-      target: nutritionTarget?.calories || 2000,
+      value: currentNutrition.calories,
+      target: nutritionTarget.calories,
       icon: Activity,
       color: '#60A5FA',
     },
     {
       label: 'Protein',
-      value: currentNutrition?.protein || 0,
-      target: nutritionTarget?.protein || 150,
+      value: currentNutrition.protein,
+      target: nutritionTarget.protein,
       unit: 'g',
       icon: Target,
       color: '#34D399',
     },
     {
       label: 'Carbs',
-      value: currentNutrition?.carbs || 0,
-      target: nutritionTarget?.carbs || 250,
+      value: currentNutrition.carbs,
+      target: nutritionTarget.carbs,
       unit: 'g',
       icon: BarChart2,
       color: '#F472B6',
     },
     {
       label: 'Fat',
-      value: currentNutrition?.fat || 0,
-      target: nutritionTarget?.fat || 70,
+      value: currentNutrition.fat,
+      target: nutritionTarget.fat,
       unit: 'g',
       icon: Utensils,
       color: '#FBBF24',
@@ -107,9 +169,21 @@ export const Dashboard = () => {
               <ambientLight intensity={0.5} />
               <pointLight position={[10, 10, 10]} />
               <Suspense fallback={null}>
-                <NutrientSphere position={[-2, 0, 0]} color="#60A5FA" scale={0.8} />
-                <NutrientSphere position={[0, 0, 0]} color="#34D399" scale={1} />
-                <NutrientSphere position={[2, 0, 0]} color="#F472B6" scale={0.6} />
+                <NutrientSphere 
+                  position={[-2, 0, 0]} 
+                  color="#60A5FA" 
+                  scale={currentNutrition.calories / nutritionTarget.calories} 
+                />
+                <NutrientSphere 
+                  position={[0, 0, 0]} 
+                  color="#34D399" 
+                  scale={currentNutrition.protein / nutritionTarget.protein} 
+                />
+                <NutrientSphere 
+                  position={[2, 0, 0]} 
+                  color="#F472B6" 
+                  scale={currentNutrition.carbs / nutritionTarget.carbs} 
+                />
                 <OrbitControls enableZoom={false} />
               </Suspense>
             </Canvas>
@@ -124,30 +198,33 @@ export const Dashboard = () => {
         >
           <h2 className="text-xl font-semibold mb-4">Recent Meals</h2>
           <div className="space-y-4">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.6 }}
-              whileHover={{ scale: 1.02 }}
-              className="flex items-center justify-between p-4 bg-gray-700 rounded-lg"
-            >
-              <div className="flex items-center">
-                <motion.img
-                  whileHover={{ scale: 1.1 }}
-                  src="https://images.unsplash.com/photo-1546069901-ba9599a7e63c"
-                  alt="Healthy Salad"
-                  className="w-16 h-16 object-cover rounded-lg"
-                />
-                <div className="ml-4">
-                  <h3 className="font-medium">Healthy Salad</h3>
-                  <p className="text-sm text-gray-400">Today, 12:30 PM</p>
+            {recentMeals.map((meal, index) => (
+              <motion.div
+                key={`${meal.name}-${index}`}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6 + index * 0.1 }}
+                whileHover={{ scale: 1.02 }}
+                className="flex items-center justify-between p-4 bg-gray-700 rounded-lg"
+              >
+                <div className="flex items-center">
+                  <motion.img
+                    whileHover={{ scale: 1.1 }}
+                    src={meal.image}
+                    alt={meal.name}
+                    className="w-16 h-16 object-cover rounded-lg"
+                  />
+                  <div className="ml-4">
+                    <h3 className="font-medium">{meal.name}</h3>
+                    <p className="text-sm text-gray-400">{meal.time}</p>
+                  </div>
                 </div>
-              </div>
-              <div className="text-right">
-                <p className="font-medium">320 kcal</p>
-                <p className="text-sm text-gray-400">Protein: 15g</p>
-              </div>
-            </motion.div>
+                <div className="text-right">
+                  <p className="font-medium">{meal.calories} kcal</p>
+                  <p className="text-sm text-gray-400">Protein: {meal.protein}g</p>
+                </div>
+              </motion.div>
+            ))}
           </div>
         </motion.div>
       </div>
