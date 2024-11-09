@@ -38,6 +38,7 @@ interface NutritionContextType {
   nutritionTarget: any;
   handleImageAnalysis: (file: File) => Promise<void>;
   updateProfile: (profile: Profile) => void;
+  setCurrentFood: any
 }
 
 const NutritionContext = createContext<NutritionContextType | undefined>(undefined);
@@ -78,14 +79,14 @@ export const NutritionProvider = ({ children }: { children: React.ReactNode }) =
   };
 
   const currentNutrition = {
-    calories: 1500,
+    calories: 985,
     protein: 75,
     carbs: 180,
     fat: 50,
   };
 
   const nutritionTarget = {
-    calories: 2000,
+    calories: 2354,
     protein: 150,
     carbs: 250,
     fat: 70,
@@ -100,6 +101,7 @@ export const NutritionProvider = ({ children }: { children: React.ReactNode }) =
         nutritionTarget,
         handleImageAnalysis,
         updateProfile,
+        setCurrentFood
       }}
     >
       {children}

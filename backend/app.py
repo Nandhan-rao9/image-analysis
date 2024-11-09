@@ -10,12 +10,6 @@ import base64
 from PIL import Image
 import io
 import time
-from pymongo import MongoClient
-from gridfs import GridFS
-from pymongo import ASCENDING, DESCENDING
-
-
-
 
 # Load environment variables
 load_dotenv()
@@ -25,126 +19,6 @@ CORS(app)
 
 # Initialize OpenAI client
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-# MongoDB configuration
-MONGO_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/')
-DB_NAME = 'nutrition_app'
-
-# Initialize MongoDB client
-mongo_client = MongoClient(MONGO_URI)
-db = mongo_client[DB_NAME]
-# Initialize GridFS for storing images
-fs = GridFS(db)
-
-# Collections
-users_collection = db['users']
-meals_collection = db['meals']
-food_logs_collection = db['food_logs']
-# recommendations_collection = db['recommendations']
-
-# Create indexes for efficient querying
-meals_collection.create_index([
-    ('user_id', ASCENDING),
-    ('timestamp', DESCENDING),
-    ('meal_type', ASCENDING)
-])
-
-class MealTracker:
-    MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack']
-    
-    @staticmethod
-    def save_meal_image(image_file):
-        """Save image to GridFS and return file ID"""
-        try:
-            # Read the image file
-            image_data = image_file.read()
-            # Save to GridFS
-            file_id = fs.put(
-                image_data,
-                filename=f"meal_image_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.jpg",
-                content_type='image/jpeg'
-            )
-            return file_id
-        except Exception as e:
-            raise Exception(f"Error saving image: {str(e)}")
-
-    @staticmethod
-    def get_meal_image(file_id):
-        """Retrieve image from GridFS"""
-        try:
-            return fs.get(file_id)
-        except Exception as e:
-            raise Exception(f"Error retrieving image: {str(e)}")
-
-    @staticmethod
-    def create_meal_entry(user_id, meal_type, image_id, analyzed_data):
-        """Create a new meal entry in the database"""
-        meal_entry = {
-            'user_id': user_id,
-            'meal_type': meal_type,
-            'timestamp': datetime.utcnow(),
-            'image_id': image_id,
-            'analyzed_data': analyzed_data,
-            'date': datetime.utcnow().date().isoformat()
-        }
-        return meals_collection.insert_one(meal_entry)
-
-    @staticmethod
-    def get_daily_meals(user_id, date=None):
-        """Get all meals for a specific day"""
-        if date is None:
-            date = datetime.utcnow().date()
-        
-        start_date = datetime.combine(date, datetime.min.time())
-        end_date = datetime.combine(date, datetime.max.time())
-        
-        return meals_collection.find({
-            'user_id': user_id,
-            'timestamp': {
-                '$gte': start_date,
-                '$lte': end_date
-            }
-        }).sort('timestamp', ASCENDING)
-
-    @staticmethod
-    def get_weekly_meals(user_id, date=None):
-        """Get all meals for a specific week"""
-        if date is None:
-            date = datetime.utcnow().date()
-        
-        # Get start of week (Monday)
-        start_date = date - timedelta(days=date.weekday())
-        end_date = start_date + timedelta(days=6)
-        
-        start_datetime = datetime.combine(start_date, datetime.min.time())
-        end_datetime = datetime.combine(end_date, datetime.max.time())
-        
-        return meals_collection.find({
-            'user_id': user_id,
-            'timestamp': {
-                '$gte': start_datetime,
-                '$lte': end_datetime
-            }
-        }).sort('timestamp', ASCENDING)
-
-    @staticmethod
-    def get_monthly_meals(user_id, year=None, month=None):
-        """Get all meals for a specific month"""
-        if year is None or month is None:
-            today = datetime.utcnow()
-            year = today.year
-            month = today.month
-        
-        start_date = datetime(year, month, 1)
-        _, last_day = calendar.monthrange(year, month)
-        end_date = datetime(year, month, last_day, 23, 59, 59)
-        
-        return meals_collection.find({
-            'user_id': user_id,
-            'timestamp': {
-                '$gte': start_date,
-                '$lte': end_date
-            }
-        }).sort('timestamp', ASCENDING)
 
 # USDA API configuration
 USDA_API_KEY = os.getenv('USDA_API_KEY')
@@ -230,7 +104,7 @@ def get_food_info_from_usda(food_name):
         print(f"Error fetching USDA data: {e}")
         return None
 
-@app.route('/analysis', methods=['POST'])
+@app.route('/analyze-image', methods=['POST'])
 def analyze_image():
     """Endpoint for image analysis"""
     if 'image' not in request.files:
@@ -268,9 +142,17 @@ def analyze_image():
         return jsonify({'error': str(e)}), 500
 
 
+
+    except Exception as e:
+        # Log the error for debugging
+        print("Error in recommendations:", str(e))
+        return jsonify({'error': 'Failed to get recommendations due to an error.'}), 500
+
     
- 
+def print_variable_every_3_seconds(variable):
+    while True:
+        print(variable)  # Print the variable
+        time.sleep(3) 
 
 if __name__ == '__main__':
     app.run(debug=True)
-    

@@ -1,24 +1,72 @@
 import React, { useState } from 'react';
-import { Camera, AlertCircle } from 'lucide-react';
+import { Camera, AlertCircle, Loader2 } from 'lucide-react';
 import { useNutrition } from '../context/NutritionContext';
+import axios from 'axios';
 
 export const Analysis = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const { currentFood, handleImageAnalysis } = useNutrition();
+  const { currentFood, setCurrentFood } = useNutrition();
+  const [quantities, setQuantities] = useState<{ [key: number]: number }>({});
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    setErrorMessage(null);
     setIsAnalyzing(true);
+
     try {
-      await handleImageAnalysis(file);
-      setErrorMessage(null);
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const response = await axios.post('http://localhost:5000/analyze-image', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      // Initialize quantities for new food items
+      const initialQuantities = response.data.reduce((acc: any, _: any, index: number) => {
+        acc[index] = 100; // Default serving size of 100g
+        return acc;
+      }, {});
+      
+      setQuantities(initialQuantities);
+      setCurrentFood(response.data);
     } catch (error) {
-      setErrorMessage('Error analyzing image');
+      console.error('Error analyzing image:', error);
+      setErrorMessage('Failed to analyze image. Please try again.');
+    } finally {
+      setIsAnalyzing(false);
     }
-    setIsAnalyzing(false);
+  };
+
+  const updateQuantity = (index: number, newQuantity: number) => {
+    setQuantities(prev => ({
+      ...prev,
+      [index]: Math.max(0, Math.min(500, newQuantity)) // Clamp between 0 and 500
+    }));
+  };
+
+  const calculateAdjustedNutrients = (nutrition: any, quantity: number) => {
+    const ratio = quantity / 100; // Calculate ratio based on 100g serving
+    return {
+      calories: Math.round(nutrition.calories * ratio),
+      protein: Math.round(nutrition.protein * ratio),
+      carbs: Math.round(nutrition.carbs * ratio),
+      fat: Math.round(nutrition.fat * ratio),
+      minerals: {
+        calcium: Math.round(nutrition.minerals.calcium * ratio),
+        iron: Math.round(nutrition.minerals.iron * ratio),
+        potassium: Math.round(nutrition.minerals.potassium * ratio)
+      },
+      vitamins: {
+        a: Math.round(nutrition.vitamins.a * ratio),
+        c: Math.round(nutrition.vitamins.c * ratio),
+        d: Math.round(nutrition.vitamins.d * ratio)
+      }
+    };
   };
 
   return (
@@ -39,62 +87,102 @@ export const Analysis = () => {
             <h2 className="text-xl font-semibold">Upload Food Image</h2>
           </div>
           
-          <div className="mt-4">
-            <label className="block w-full cursor-pointer">
-              <div className="border-2 border-dashed border-gray-600 rounded-lg p-8 text-center hover:border-blue-400 transition-colors">
+          <label className="block w-full cursor-pointer">
+            <div className={`border-2 border-dashed border-gray-600 rounded-lg p-8 text-center transition-colors ${isAnalyzing ? 'opacity-50' : 'hover:border-blue-400'}`}>
+              {isAnalyzing ? (
+                <Loader2 className="h-12 w-12 mx-auto text-blue-400 mb-4 animate-spin" />
+              ) : (
                 <Camera className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                <p className="text-gray-300">Click to upload or drag and drop</p>
-                <p className="text-sm text-gray-500 mt-2">PNG, JPG up to 10MB</p>
-              </div>
-              <input
-                type="file"
-                className="hidden"
-                accept="image/*"
-                onChange={handleImageUpload}
-              />
-            </label>
-          </div>
-
-          {isAnalyzing && (
-            <div className="mt-4 text-center text-gray-400">
-              Analyzing your food...
+              )}
+              <p className="text-gray-300">
+                {isAnalyzing ? 'Analyzing...' : 'Click to upload or drag and drop'}
+              </p>
+              <p className="text-sm text-gray-500 mt-2">PNG, JPG up to 10MB</p>
             </div>
-          )}
+            <input
+              type="file"
+              className="hidden"
+              accept="image/*"
+              onChange={handleImageUpload}
+              disabled={isAnalyzing}
+            />
+          </label>
         </div>
 
         {currentFood.length > 0 && (
           <div className="bg-gray-800 rounded-lg p-6 shadow-lg">
             <h2 className="text-xl font-semibold mb-4">Analysis Results</h2>
-            <div className="space-y-4">
-              {currentFood.map((food, index) => (
-                <div
-                  key={index}
-                  className="border-b border-gray-700 last:border-0 py-4"
-                >
-                  <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-medium text-blue-400">
-                      {food.name}
-                    </h3>
-                    <span className="text-sm text-gray-400">
-                      {Math.round(food.confidence * 100)}% confidence
-                    </span>
+            <div className="space-y-6">
+              {currentFood.map((food, index) => {
+                const adjustedNutrition = calculateAdjustedNutrients(food.nutrition, quantities[index]);
+                return (
+                  <div
+                    key={index}
+                    className="border-b border-gray-700 last:border-0 py-4"
+                  >
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-lg font-medium text-blue-400">
+                        {food.name}
+                      </h3>
+                      <span className="text-sm text-gray-400">
+                        {Math.round(food.confidence * 100)}% confidence
+                      </span>
+                    </div>
+
+                    <div className="mt-4 flex items-center space-x-4">
+                      <div className="flex items-center space-x-2">
+                        <button
+                          className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-white"
+                          onClick={() => updateQuantity(index, quantities[index] - 10)}
+                        >
+                          -
+                        </button>
+                        <input
+                          type="number"
+                          value={quantities[index]}
+                          onChange={(e) => updateQuantity(index, Number(e.target.value))}
+                          className="w-20 px-2 py-1 bg-gray-700 text-white rounded text-center"
+                          min="0"
+                          max="500"
+                          step="10"
+                        />
+                        <button
+                          className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-white"
+                          onClick={() => updateQuantity(index, quantities[index] + 10)}
+                        >
+                          +
+                        </button>
+                        <span className="text-gray-400">grams</span>
+                      </div>
+                      <input
+                        type="range"
+                        value={quantities[index]}
+                        onChange={(e) => updateQuantity(index, Number(e.target.value))}
+                        className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                        min="0"
+                        max="500"
+                        step="10"
+                      />
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-4 text-sm text-gray-300">
+                      <div>Calories: {adjustedNutrition.calories}kcal</div>
+                      <div>Protein: {adjustedNutrition.protein}g</div>
+                      <div>Carbs: {adjustedNutrition.carbs}g</div>
+                      <div>Fat: {adjustedNutrition.fat}g</div>
+                    </div>
+                    
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-400">
+                      <div>Calcium: {adjustedNutrition.minerals.calcium}mg</div>
+                      <div>Iron: {adjustedNutrition.minerals.iron}mg</div>
+                      <div>Potassium: {adjustedNutrition.minerals.potassium}mg</div>
+                      <div>Vitamin A: {adjustedNutrition.vitamins.a}IU</div>
+                      <div>Vitamin C: {adjustedNutrition.vitamins.c}mg</div>
+                      <div>Vitamin D: {adjustedNutrition.vitamins.d}IU</div>
+                    </div>
                   </div>
-                  <div className="mt-4 grid grid-cols-2 gap-4 text-sm text-gray-300">
-                    <div>Calories: {food.nutrition.calories}kcal</div>
-                    <div>Protein: {food.nutrition.protein}g</div>
-                    <div>Carbs: {food.nutrition.carbs}g</div>
-                    <div>Fat: {food.nutrition.fat}g</div>
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-400">
-                    <div>Calcium: {food.nutrition.minerals.calcium}mg</div>
-                    <div>Iron: {food.nutrition.minerals.iron}mg</div>
-                    <div>Potassium: {food.nutrition.minerals.potassium}mg</div>
-                    <div>Vitamin A: {food.nutrition.vitamins.a}IU</div>
-                    <div>Vitamin C: {food.nutrition.vitamins.c}mg</div>
-                    <div>Vitamin D: {food.nutrition.vitamins.d}IU</div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
